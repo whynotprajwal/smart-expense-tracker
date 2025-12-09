@@ -1,38 +1,46 @@
-import { useEffect, useState } from "react";
-import axios from "axios";
-import "./App.css";
-
-const API = "http://127.0.0.1:8000";
+import { useEffect, useState } from 'react';
+import './App.css';
 
 function App() {
-  const [month, setMonth] = useState("2025-12");
+  const [month, setMonth] = useState('2025-12');
   const [summary, setSummary] = useState(null);
   const [alerts, setAlerts] = useState([]);
-  const [transactions, setTransactions] = useState([]);
-  const [form, setForm] = useState({
-    tx_date: new Date().toISOString().slice(0, 10),
-    amount: "",
-    tx_type: "EXPENSE",
-    category: "Food",
-    note: "",
-  });
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
+
+  const API_URL = 'http://127.0.0.1:8000';
 
   const loadData = async () => {
+    setLoading(true);
+    setError(null);
     try {
-      const s = await axios.get(`${API}/summary`, { params: { month } });
-      setSummary(s.data);
-      const a = await axios.get(`${API}/budgets/alerts`, { params: { month } });
-      setAlerts(a.data.alerts);
-      const t = await axios.get(`${API}/transactions`);
-      setTransactions(t.data);
+      const sumRes = await fetch(`${API_URL}/summary?month=${month}`);
+      if (!sumRes.ok) throw new Error('Failed to fetch summary');
+      const sumData = await sumRes.json();
+      setSummary(sumData);
+
+      const alertRes = await fetch(`${API_URL}/budgets/alerts?month=${month}`);
+      if (!alertRes.ok) throw new Error('Failed to fetch alerts');
+      const alertData = await alertRes.json();
+      setAlerts(alertData.alerts || []);
     } catch (err) {
-      console.error("Error loading data:", err);
+      setError(err.message);
+      console.error('Error loading data:', err);
     }
+    setLoading(false);
   };
 
   useEffect(() => {
     loadData();
   }, [month]);
+
+  const [form, setForm] = useState({
+    tx_date: new Date().toISOString().slice(0, 10),
+    amount: '',
+    tx_type: 'EXPENSE',
+    category: 'Food',
+    note: '',
+  });
 
   const handleChange = (e) => {
     setForm({ ...form, [e.target.name]: e.target.value });
@@ -41,20 +49,25 @@ function App() {
   const submitTx = async (e) => {
     e.preventDefault();
     try {
-      await axios.post(`${API}/transactions`, {
-        ...form,
-        amount: parseFloat(form.amount),
+      const res = await fetch(`${API_URL}/transactions`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ...form,
+          amount: parseFloat(form.amount),
+        }),
       });
+      if (!res.ok) throw new Error('Failed to add transaction');
       setForm({
         tx_date: new Date().toISOString().slice(0, 10),
-        amount: "",
-        tx_type: "EXPENSE",
-        category: "Food",
-        note: "",
+        amount: '',
+        tx_type: 'EXPENSE',
+        category: 'Food',
+        note: '',
       });
       loadData();
     } catch (err) {
-      console.error("Error adding transaction:", err);
+      console.error('Error adding transaction:', err);
     }
   };
 
@@ -63,6 +76,9 @@ function App() {
       <header className="header">
         <h1>💰 Smart Expense & Budget Tracker</h1>
       </header>
+
+      {error && <div style={{ padding: '10px', background: '#ffcccb', color: 'red', marginBottom: '10px' }}>Error: {error}</div>}
+      {loading && <div style={{ padding: '10px', background: '#e3f2fd', color: 'blue' }}>Loading...</div>}
 
       <section className="month-selector">
         <label>
@@ -98,18 +114,6 @@ function App() {
             <li key={i} className="alert-item">{a}</li>
           ))}
         </ul>
-      </section>
-
-      <section className="category-breakdown">
-        <h2>📊 Expense by Category</h2>
-        <div className="category-list">
-          {summary?.per_category?.map((cat, i) => (
-            <div key={i} className="category-item">
-              <span className="cat-name">{cat.category}</span>
-              <span className="cat-amount">₹{(cat.spent ?? 0).toFixed(2)}</span>
-            </div>
-          ))}
-        </div>
       </section>
 
       <section className="form-section">
@@ -152,7 +156,6 @@ function App() {
               <option>Rent</option>
               <option>Shopping</option>
               <option>Entertainment</option>
-              <option>Utilities</option>
               <option>Other</option>
             </select>
           </div>
@@ -169,22 +172,19 @@ function App() {
         </form>
       </section>
 
-      <section className="transactions-section">
-        <h2>📝 Recent Transactions</h2>
-        <div className="transactions-list">
-          {transactions.slice(0, 10).map((tx, i) => (
-            <div key={i} className="transaction-item">
-              <div>
-                <strong>{tx.category}</strong>
-                <p>{tx.note || "No note"}</p>
+      {summary?.per_category && (
+        <section className="category-breakdown">
+          <h2>📊 Expense by Category</h2>
+          <div className="category-list">
+            {summary.per_category.map((cat, i) => (
+              <div key={i} className="category-item">
+                <span className="cat-name">{cat.category}</span>
+                <span className="cat-amount">₹{(cat.spent ?? 0).toFixed(2)}</span>
               </div>
-              <div className={`amount ${tx.tx_type.toLowerCase()}`}>
-                {tx.tx_type === "INCOME" ? "+" : "-"}₹{(tx.amount || 0).toFixed(2)}
-              </div>
-            </div>
-          ))}
-        </div>
-      </section>
+            ))}
+          </div>
+        </section>
+      )}
     </div>
   );
 }
